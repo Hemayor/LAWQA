@@ -5,7 +5,7 @@ import config # 引入全局配置
 from agent_graph import tools
 from state import AgentState
 from llm_factory import LLMFactory
-
+import json
 
 # ==========================================
 # 1. 定义 Pydantic 数据结构
@@ -41,7 +41,11 @@ def create_planner_prompt(request: str) -> str:
 格式示例：
 {{
     "plan": ["scout_web_search_tool()","query_rewrite_tool()", "retrieve_and_rerank_tool()", "FINISH"]
+}}
+{{
     "plan": ["query_rewrite_tool()", "retrieve_and_rerank_tool()", "FINISH"]
+}}
+{{
     "plan": ["retrieve_and_rerank_tool()", "FINISH"]
 }}
 
@@ -112,19 +116,178 @@ def task_planner_node(state: AgentState) -> Dict[str, Any]:
 # ==========================================
 # 本地独立测试入口
 # ==========================================
+# if __name__ == "__main__":
+#     print("🚀 开始独立测试 Task Planner 节点 (双模型高可用版)...")
+#
+#     # 构造完整的假 State
+#     test_state_1 = {
+#         "original_request": "我是赵露思的粉丝，她跟银河酷娱闹解约，公司说她违约要赔4亿，这合理吗？",
+#         "clarification_question": None,
+#         "rewrite_request": None,
+#         "plan": [],
+#         "intermediate_steps": [],
+#         "verification_history": [],
+#         "final_response": ""
+#     }
+#
+#     print("\n【测试案例 1：本地法律检索】")
+#     task_planner_node(test_state_1)
+
+
+# ==========================================
+# 本地独立测试入口
+# ==========================================
 if __name__ == "__main__":
-    print("🚀 开始独立测试 Task Planner 节点 (双模型高可用版)...")
+    print("🚀 开始批量测试 Task Planner 节点 (双模型高可用版)...")
 
-    # 构造完整的假 State
-    test_state_1 = {
-        "original_request": "我是赵露思的粉丝，她跟银河酷娱闹解约，公司说她违约要赔4亿，这合理吗？",
-        "clarification_question": None,
-        "rewrite_request": None,
-        "plan": [],
-        "intermediate_steps": [],
-        "verification_history": [],
-        "final_response": ""
-    }
+    # 🔧 你可以在这里修改测试文件的路径，默认用我们之前生成的多跳问答测试集
+    test_file = "../data/test_set/mini_testset3.jsonl"
+    # 🔧 结果输出文件
+    output_file = "../output/planner_test_result.txt"
 
-    print("\n【测试案例 1：本地法律检索】")
-    task_planner_node(test_state_1)
+    # 提前提取合法的工具名，用来校验模型输出
+    valid_tool_names = {tool.name + "()" for tool in tools}
+    print(f"✅ 合法工具列表: {valid_tool_names}")
+    print(f"📂 测试文件: {test_file}")
+    print(f"📝 结果将输出到: {output_file}")
+
+    # 统计变量
+    total = 0
+    format_correct = 0
+    plan_with_search = 0
+    plan_without_search = 0
+    error_cases = []
+
+    try:
+        with open(test_file, 'r', encoding='utf-8') as f, \
+                open(output_file, 'w', encoding='utf-8') as out_f:
+
+            # 写入 CSV 表头，方便你用 Excel 打开
+            out_f.write("id,plan,is_format_correct\n")
+
+            lines = f.readlines()
+            total = len(lines)
+            print(f"🔍 共加载 {total} 个测试用例\n")
+
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    sample = json.loads(line)
+                    q_id = sample['id']
+                    question = sample['question']
+
+                    print(f"\n{'=' * 60}")
+                    print(f"【测试用例 {i + 1}/{total} | ID: {q_id}】")
+                    print(f"用户问题: {question}")
+
+                    # 构造状态，调用节点
+                    test_state = {
+                        "original_request": question,
+                        "clarification_question": None,
+                        "rewrite_request": None,
+                        "plan": [],
+                        "intermediate_steps": [],
+                        "verification_history": [],
+                        "final_response": "",
+                        "loop_count": 0
+                    }
+                    result = task_planner_node(test_state)
+                    plan = result['plan']
+
+                    # 🔍 校验 plan 格式是否正确
+                    # 1. 最后一个必须是 FINISH
+                    # 2. 前面的工具名必须是合法的
+                    is_format_ok = True
+                    format_error = ""
+
+                    if not plan:
+                        is_format_ok = False
+                        format_error = "Plan 为空"
+                    else:
+                        if plan[-1] != "FINISH":
+                            is_format_ok = False
+                            format_error = f"最后一个元素不是 FINISH，而是: {plan[-1]}"
+                        else:
+                            # 检查前面的工具名
+                            for tool_name in plan[:-1]:
+                                if tool_name not in valid_tool_names:
+                                    is_format_ok = False
+                                    format_error = f"包含非法工具名: {tool_name}"
+                                    break
+
+                    # 检查是否包含搜索工具
+                    has_search = any("scout_web_search_tool" in p for p in plan)
+
+                    # 📝 写入结果到文件
+                    # 转义 plan 里的双引号，防止破坏 CSV 格式
+                    plan_str = str(plan).replace('"', '\\"')
+                    out_f.write(f'{q_id},"{plan_str}",{is_format_ok}\n')
+                    out_f.flush()  # 实时写入，防止程序崩溃丢数据
+
+                    # 统计
+                    if is_format_ok:
+                        format_correct += 1
+                        if has_search:
+                            plan_with_search += 1
+                        else:
+                            plan_without_search += 1
+                        print(f"\n✅ 格式校验通过！")
+                        if has_search:
+                            print(f"  模型决定需要联网搜索: {plan}")
+                        else:
+                            print(f"  模型决定仅本地检索: {plan}")
+                    else:
+                        error_cases.append({
+                            "id": q_id,
+                            "question": question,
+                            "error": format_error,
+                            "plan": plan
+                        })
+                        print(f"\n❌ 格式校验失败！{format_error}")
+                        print(f"  错误的 Plan: {plan}")
+
+                except Exception as e:
+                    print(f"\n⚠️  处理测试用例 {i + 1} 出错: {str(e)}")
+                    continue
+
+        # 全部跑完，输出汇总报告
+        print("\n\n" + "=" * 60)
+        print("🏆 批量测试完成！汇总报告:")
+        print(f"  总测试用例: {total}")
+        print(f"  格式正确的 Plan: {format_correct} 个 | 格式准确率: {round(format_correct / total * 100, 2)}%")
+        print("-" * 40)
+        if format_correct > 0:
+            print(f"  其中，模型决定【需要联网搜索】的: {plan_with_search} 个")
+            print(f"  其中，模型决定【仅本地检索】的: {plan_without_search} 个")
+        print("-" * 40)
+        print(f"  格式错误的 Plan: {len(error_cases)} 个")
+        print(f"\n📄 所有测试结果已保存到: {output_file}")
+
+        if error_cases:
+            print("\n❌ 错误的测试用例详情:")
+            for err in error_cases:
+                print(f"  - ID: {err['id']} | 问题: {err['question']}")
+                print(f"    错误原因: {err['error']}")
+                print(f"    错误 Plan: {err['plan']}")
+
+    except FileNotFoundError:
+        print(f"\n❌ 错误：找不到测试文件 {test_file}，请检查路径是否正确！")
+        # 如果找不到，就跑原来的单个测试
+        print("\n🔄  fallback 到原来的单个测试...")
+        # 构造完整的假 State
+        test_state_1 = {
+            "original_request": "我是赵露思的粉丝，她跟银河酷娱闹解约，公司说她违约要赔4亿，这合理吗？",
+            "clarification_question": None,
+            "rewrite_request": None,
+            "plan": [],
+            "intermediate_steps": [],
+            "verification_history": [],
+            "final_response": "",
+            "loop_count": 0
+        }
+        print("\n【测试案例 1：本地法律检索】")
+        task_planner_node(test_state_1)
+    except Exception as e:
+        print(f"\n❌ 运行出错: {str(e)}")
