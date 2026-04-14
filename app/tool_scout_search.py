@@ -92,10 +92,10 @@ def scout_web_search_tool(state: AgentState) -> dict:
         for ref in references:
             search_results.append({
                 "title": ref.get("title", "无标题"),
-                "url": ref.get("url", "无链接"),
+                # "url": ref.get("url", "无链接"),
                 "content": ref.get("content", ""),
-                "published_date": ref.get("date", None),  # 对齐 Tavily 的时间字段
-                "score": 1.0  # 占位，兼容原有字段
+                # "published_date": ref.get("date", None),  # 对齐 Tavily 的时间字段
+                # "score": 1.0  # 占位，兼容原有字段
             })
 
         print(f"  - 搜索完成：找到了 {len(search_results)} 条相关的优质网页摘要。")
@@ -130,44 +130,113 @@ def scout_web_search_tool(state: AgentState) -> dict:
 
 
 # ==========================================
-# 本地测试入口 (Main 函数)
+# 本地批量测试入口 (Main 函数)
 # ==========================================
 if __name__ == "__main__":
-    print("🚀 开始独立测试 scout_web_search_tool 工具...")
+    import csv
 
-    # 1. 构造一个模拟的 AgentState 字典
-    test_state = {
-        "original_request": "我是赵露思的粉丝，她跟银河酷娱闹解约，公司说她违约要赔4亿，这合理吗？",
-        "clarification_question": None,
-        "rewrite_request": None,
-        "plan": [],
-        "intermediate_steps": [],
-        "verification_history": [],
-        "final_response": "",
-        "loop_count": 0
-    }
+    print("🚀 开始批量测试 scout_web_search_tool 工具...")
+
+    INPUT_FILE = "../data/test_set/web.jsonl"
+    OUTPUT_FILE = "../output/websearch_test_result.csv"
+
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+
+    # 定义 CSV 表头
+    headers = [
+        "id", "question",
+        "result_1_title", "result_1_content",
+        "result_2_title", "result_2_content",
+        "result_3_title", "result_3_content",
+        "cost_time_sec", "error"
+    ]
+
+    success_count = 0
+    error_count = 0
 
     try:
-        # 2. 调用工具
-        results = scout_web_search_tool.invoke({"state": test_state})
+        with open(INPUT_FILE, 'r', encoding='utf-8') as f_in, \
+                open(OUTPUT_FILE, 'w', encoding='utf-8-sig', newline='') as f_out:  # utf-8-sig 防止 Excel 乱码
 
-        print("\n🏆 --- 过滤后的“人类友好版”搜索结果 ---")
+            writer = csv.DictWriter(f_out, fieldnames=headers)
+            writer.writeheader()
 
-        for i, res in enumerate(results):
-            if isinstance(res, dict):
-                title = res.get('title', '无标题')
-                url = res.get('url', '无链接')
-                raw_content = res.get('content', str(res))
-            else:
-                title = "无标题"
-                url = "未知"
-                raw_content = str(res)
+            lines = f_in.readlines()
+            total_cases = len([line for line in lines if line.strip()])
+            print(f"📂 成功读取测试文件，共找到 {total_cases} 个测试用例。\n" + "=" * 50)
 
-            clean_content = raw_content
+            for i, line in enumerate(lines):
+                if not line.strip():
+                    continue
 
-            print(f"\n[{i + 1}] 标题: {title}")
-            print(f"    🔗 链接: {url}")
-            print(f"    📄 摘要: {clean_content}")
+                # 1. 解析每一行的 JSON 数据
+                item = json.loads(line)
+                q_id = item.get("id", "unknown")
+                question = item.get("question", "")
 
+                print(
+                    f"▶️ [进度 {success_count + error_count + 1}/{total_cases}] 正在测试 ID: {q_id} | {question[:20]}...")
+
+                # 2. 构造 AgentState
+                test_state = {
+                    "original_request": question,
+                    "clarification_question": None,
+                    "rewrite_request": None,
+                    "plan": [],
+                    "intermediate_steps": [],
+                    "verification_history": [],
+                    "final_response": "",
+                    "loop_count": 0,
+                    "timing_stats": {}
+                }
+
+                # 初始化这一行要写入 CSV 的数据
+                row_data = {
+                    "id": q_id,
+                    "question": question,
+                    "cost_time_sec": 0,
+                    "error": ""
+                }
+
+                try:
+                    # 3. 调用工具进行搜索
+                    results = scout_web_search_tool.invoke({"state": test_state})
+
+                    search_results = results.get("search_results", [])
+                    timing_stats = results.get("timing_stats", {})
+
+                    # 记录耗时
+                    row_data["cost_time_sec"] = timing_stats.get("web_search", 0)
+
+                    # 4. 将搜索结果填入对应的列 (最多取前3个)
+                    for j in range(min(3, len(search_results))):
+                        res = search_results[j]
+                        # 防御性判断，万一返回的不是字典
+                        if isinstance(res, dict):
+                            row_data[f"result_{j + 1}_title"] = res.get("title", "无标题")
+                            row_data[f"result_{j + 1}_content"] = res.get("content", "")
+                        else:
+                            row_data[f"result_{j + 1}_content"] = str(res)
+
+                    success_count += 1
+
+                except Exception as e:
+                    print(f"  ❌ ID {q_id} 搜索出错: {e}")
+                    row_data["error"] = str(e)
+                    error_count += 1
+
+                # 5. 写入 CSV 并立刻刷新缓存（防止中途崩溃丢数据）
+                writer.writerow(row_data)
+                f_out.flush()
+
+        print("\n" + "=" * 50)
+        print(f"🏆 批量测试完成！")
+        print(f"✅ 成功: {success_count} 条")
+        print(f"❌ 失败: {error_count} 条")
+        print(f"💾 结果已保存至: {OUTPUT_FILE}")
+
+    except FileNotFoundError:
+        print(f"❌ 找不到输入文件: {INPUT_FILE}，请检查路径。")
     except Exception as e:
-        print(f"\n❌ 运行出错: {e}")
+        print(f"❌ 发生全局错误: {e}")

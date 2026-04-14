@@ -1,18 +1,48 @@
-import pandas as pd
+import json
+import os
 
-file_path = "../data/data_set/pkulaw_combined_articles_chunked.csv"
-df = pd.read_csv(file_path)
+# ==========================================
+# 1. 配置文件路径
+# ==========================================
+# 假设你要处理的是这个文件，你可以根据实际情况修改
+INPUT_FILE = "../data/test_set/legal_test_set_final.jsonl"
+OUTPUT_FILE = "../data/test_set/web_renumbered.jsonl"
 
-# 情况 1：如果你指的 38054 是它的物理行号（即索引值，从 0 开始）
-print("========== 【按行号查找 (Index: 38054)】 ==========")
-print(df.iloc[16801])
 
-print("\n" + "="*50 + "\n")
+def main():
+    if not os.path.exists(INPUT_FILE):
+        print(f"❌ 找不到 JSONL 文件: {INPUT_FILE}")
+        return
 
-# 情况 2：如果你原始 CSV 里本来就有一列叫 'id' 或 'Unnamed: 0'，并且你想查值为 38054 的那一行
-print("========== 【按 ID 列查找 (ID: 38054)】 ==========")
-# 假设你的主键列名叫 'id'，如果叫别的请自行修改
-if 'id' in df.columns:
-    print(df[df['id'] == 38054] if pd.api.types.is_numeric_dtype(df['id']) else df[df['id'] == '38054'])
-else:
-    print("你的 CSV 里没有名为 'id' 的列。")
+    print("🛠️ 正在重新编排行号...")
+
+    processed_count = 0
+
+    with open(INPUT_FILE, 'r', encoding='utf-8') as fin, \
+            open(OUTPUT_FILE, 'w', encoding='utf-8') as fout:
+
+        for line in fin:
+            if not line.strip():
+                continue
+
+            data = json.loads(line)
+
+            # 生成新的 ID，自增并自动补齐 3 位数（001, 002, 003...）
+            # 如果你的题目超过 1000 道，可以改成 :04d (0001)
+            processed_count += 1
+            new_id = f"{processed_count:03d}"
+
+            # 替换旧的 ID
+            data['id'] = new_id
+
+            # 将更新后的数据写回新文件
+            fout.write(json.dumps(data, ensure_ascii=False) + '\n')
+
+    print("-" * 50)
+    print(f"🎉 处理完成！共为 {processed_count} 道题目重新分配了连续的 ID。")
+    print(f"💾 新的测试集已保存至: {OUTPUT_FILE}")
+    print("💡 检查无误后，可以把旧的 web.jsonl 删掉，把这个新文件改名替换上去！")
+
+
+if __name__ == "__main__":
+    main()
