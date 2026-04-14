@@ -45,10 +45,17 @@ def task_executor_node(state: AgentState) -> Dict[str, Any]:
 
         print(f"  -> ✅ 工具 {tool_name} 成功返回数据。")
 
+        # 【特殊处理】：某些工具返回字典格式，需要提取实际结果
+        tool_output = result
+        if tool_name == 'retrieve_and_rerank_tool' and isinstance(result, dict) and 'retrieval_results' in result:
+            tool_output = result['retrieval_results']
+        elif tool_name == 'scout_web_search_tool' and isinstance(result, dict) and 'search_results' in result:
+            tool_output = result['search_results']
+
         # 记录执行足迹 (供最后的大模型参考)
         new_intermediate_step = {
             'tool_name': tool_name,
-            'tool_output': result
+            'tool_output': tool_output
         }
 
         # 构造给 LangGraph 图谱的状态更新包
@@ -62,8 +69,15 @@ def task_executor_node(state: AgentState) -> Dict[str, Any]:
         if isinstance(result, dict):
             # 将工具返回的字典数据，合并到更新包中
             for key, value in result.items():
-                state_update[key] = value
-                print(f"  -> 🔄 触发状态注入: 成功将 '{key}' 更新到全局 State 中。")
+                # 特殊处理 timing_stats：需要合并而不是覆盖
+                if key == 'timing_stats' and isinstance(value, dict):
+                    current_stats = state_update.get('timing_stats', state.get('timing_stats', {})).copy()
+                    current_stats.update(value)
+                    state_update['timing_stats'] = current_stats
+                    print(f"  -> 🕐 时间统计已更新: {current_stats}")
+                else:
+                    state_update[key] = value
+                    print(f"  -> 🔄 触发状态注入: 成功将 '{key}' 更新到全局 State 中。")
 
         return state_update
 

@@ -10,7 +10,7 @@ from langchain_community.callbacks.manager import get_openai_callback
 # ==========================================
 # 1. 配置文件路径
 # ==========================================
-INPUT_FILE = "../data/test_set/mini_testset.jsonl"
+INPUT_FILE = "../data/test_set/mini_testset2.jsonl"
 OUTPUT_FILE = "../output/evaluation_results.csv"
 
 # ==========================================
@@ -26,11 +26,17 @@ CSV_HEADERS = [
     "verification_history",
     "final_response",
     "loop_count",
-    "end_to_end_time_seconds",  # 👈 必须包含耗时
-    "prompt_tokens",            # 👈 必须包含输入Token
-    "completion_tokens",        # 👈 必须包含输出Token
-    "total_tokens",             # 👈 必须包含总Token
-    "total_cost_usd"            # 👈 必须包含预估成本
+    "planning_time_seconds",      # 👈 规划时间（累计）
+    "rewrite_time_seconds",       # 👈 改写时间（累计）
+    "retrieval_time_seconds",     # 👈 检索时间（累计）
+    "generation_time_seconds",    # 👈 生成时间（累计）
+    "web_search_time_seconds",    # 👈 网络搜索时间（累计）
+    "other_tools_time_seconds",   # 👈 其他工具时间（累计）
+    "end_to_end_time_seconds",    # 👈 端到端总时间
+    "prompt_tokens",              # 👈 必须包含输入Token
+    "completion_tokens",          # 👈 必须包含输出Token
+    "total_tokens",               # 👈 必须包含总Token
+    "total_cost_usd"              # 👈 必须包含预估成本
 ]
 
 
@@ -99,6 +105,19 @@ def run_batch_evaluation():
             # 其他字段保持原样转为字符串
             steps_str = json.dumps(intermediate_steps, ensure_ascii=False)
             history_str = json.dumps(final_state.get("verification_history", []), ensure_ascii=False)
+
+            # ⏱️ 提取时间统计信息
+            timing_stats = final_state.get("timing_stats", {})
+            planning_time = round(timing_stats.get('planning', 0), 4)
+            rewrite_time = round(timing_stats.get('rewrite', 0), 4)
+            retrieval_time = round(timing_stats.get('retrieval', 0), 4)
+            generation_time = round(timing_stats.get('generation', 0), 4)
+            web_search_time = round(timing_stats.get('web_search', 0), 4)
+            # 其他工具时间 = 总时间 - 已知工具时间
+            other_tools_time = round(e2e_time - planning_time - rewrite_time - retrieval_time - generation_time - web_search_time, 4)
+            if other_tools_time < 0:
+                other_tools_time = 0  # 防止负数
+
             # ==========================================
             # 5. 组装一行数据
             # ==========================================
@@ -112,7 +131,13 @@ def run_batch_evaluation():
                 "verification_history": history_str,
                 "final_response": final_state.get("final_response", ""),
                 "loop_count": final_state.get("loop_count", 0),
-                "end_to_end_time_seconds": e2e_time,
+                "planning_time_seconds": planning_time,         # 🌟 规划时间
+                "rewrite_time_seconds": rewrite_time,           # 🌟 改写时间
+                "retrieval_time_seconds": retrieval_time,       # 🌟 检索时间
+                "generation_time_seconds": generation_time,     # 🌟 生成时间
+                "web_search_time_seconds": web_search_time,     # 🌟 网络搜索时间
+                "other_tools_time_seconds": other_tools_time,   # 🌟 其他工具时间
+                "end_to_end_time_seconds": e2e_time,            # 🌟 端到端总时间
                 "prompt_tokens": p_tokens,  # 🌟 写入 CSV
                 "completion_tokens": c_tokens,  # 🌟 写入 CSV
                 "total_tokens": t_tokens,  # 🌟 写入 CSV

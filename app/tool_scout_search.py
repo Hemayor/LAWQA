@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 from langchain_core.tools import tool
 from dotenv import load_dotenv  # 新增：加载.env文件的库
@@ -27,7 +28,7 @@ API_URL = "https://qianfan.baidubce.com/v2/ai_search/web_search"
 #     调用指南：直接调用 `scout_web_search_tool()` 即可，不需要传参数。
 # """
 @tool
-def scout_web_search_tool(state: AgentState) -> list:
+def scout_web_search_tool(state: AgentState) -> dict:
     """
     网络搜索专家（Scout Agent）。
     ⚠️ 【调用规则极其严格，请100%严格遵守】：
@@ -48,6 +49,9 @@ def scout_web_search_tool(state: AgentState) -> list:
 
     调用指南：直接调用 `scout_web_search_tool()` 即可，不需要传参数。
     """
+    # ⏱️ 开始计时
+    start_time = time.time()
+
     query = state['original_request']
     print(f"\n[Tool 3] 侦察兵出动 🚀 正在全网搜索: '{query}'")
 
@@ -95,11 +99,34 @@ def scout_web_search_tool(state: AgentState) -> list:
             })
 
         print(f"  - 搜索完成：找到了 {len(search_results)} 条相关的优质网页摘要。")
-        return search_results
+
+        # ⏱️ 计时结束，累计到 timing_stats
+        end_time = time.time()
+        elapsed_time = round(end_time - start_time, 4)
+
+        timing_stats = state.get('timing_stats', {}).copy()
+        timing_stats['web_search'] = timing_stats.get('web_search', 0) + elapsed_time
+        print(f"  - 搜索耗时: {elapsed_time}s | 累计搜索时间: {timing_stats['web_search']}s")
+
+        return {
+            "search_results": search_results,
+            "timing_stats": timing_stats
+        }
 
     except Exception as e:
         print(f"  - ❌ 搜索失败: {e}")
-        return [{"url": "error", "content": f"搜索工具发生错误: {str(e)}"}]
+
+        # ⏱️ 计时结束（出错也要记录时间）
+        end_time = time.time()
+        elapsed_time = round(end_time - start_time, 4)
+
+        timing_stats = state.get('timing_stats', {}).copy()
+        timing_stats['web_search'] = timing_stats.get('web_search', 0) + elapsed_time
+
+        return {
+            "search_results": [{"url": "error", "content": f"搜索工具发生错误: {str(e)}"}],
+            "timing_stats": timing_stats
+        }
 
 
 # ==========================================

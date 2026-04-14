@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
+import time
 import config # 引入全局配置
 # 引入状态定义和已注册的工具箱
 from agent_graph import tools
@@ -62,6 +63,9 @@ def task_planner_node(state: AgentState) -> Dict[str, Any]:
     """
     print("\n🧠 [-- 任务规划节点 (Task Planner) 启动 --]")
 
+    # ⏱️ 开始计时
+    start_time = time.time()
+
     # 【新增】：每次进入规划器，说明开启了新的一轮，轮次 +1
     current_loop = state.get("loop_count", 0)
     new_loop_count = current_loop + 1
@@ -87,10 +91,20 @@ def task_planner_node(state: AgentState) -> Dict[str, Any]:
         print(f"  -> [尝试 1] 正在使用 DeepSeek 制定计划 (当前轮次: {new_loop_count})...")
         response_obj = structured_ds.invoke(prompt)
         print(f"  -> ✅ DeepSeek 制定计划成功: {response_obj.plan,}")
+
+        # ⏱️ 计时结束，累计到 timing_stats
+        end_time = time.time()
+        elapsed_time = round(end_time - start_time, 4)
+
+        timing_stats = state.get('timing_stats', {}).copy()
+        timing_stats['planning'] = timing_stats.get('planning', 0) + elapsed_time
+        print(f"  -> 规划耗时: {elapsed_time}s | 累计规划时间: {timing_stats['planning']}s")
+
         return {
             "plan": response_obj.plan,
             "loop_count": new_loop_count,
-            "intermediate_steps": []
+            "intermediate_steps": [],
+            "timing_stats": timing_stats
         }
 
     except Exception as e_ds:
@@ -101,17 +115,39 @@ def task_planner_node(state: AgentState) -> Dict[str, Any]:
             response_obj = structured_gpt.invoke(prompt)
             plan_list = response_obj.plan
             print(f"  -> ✅ GPT-4o-mini 挽救成功，制定计划为: {plan_list}")
-            return {"plan": plan_list,
-                    "loop_count": new_loop_count,
-                    "intermediate_steps": []
+
+            # ⏱️ 计时结束，累计到 timing_stats
+            end_time = time.time()
+            elapsed_time = round(end_time - start_time, 4)
+
+            timing_stats = state.get('timing_stats', {}).copy()
+            timing_stats['planning'] = timing_stats.get('planning', 0) + elapsed_time
+            print(f"  -> 规划耗时: {elapsed_time}s | 累计规划时间: {timing_stats['planning']}s")
+
+            return {
+                "plan": plan_list,
+                "loop_count": new_loop_count,
+                "intermediate_steps": [],
+                "timing_stats": timing_stats
             }
 
         except Exception as e_gpt:
             print(f"  -> ❌ 致命错误：GPT-4o-mini 也解析失败: {e_gpt}")
             print("  -> 兜底机制：跳过工具，直接结束计划。")
-            return {"plan": ["FINISH"],
-                    "loop_count": new_loop_count,
-                    "intermediate_steps": []
+
+            # ⏱️ 计时结束，累计到 timing_stats
+            end_time = time.time()
+            elapsed_time = round(end_time - start_time, 4)
+
+            timing_stats = state.get('timing_stats', {}).copy()
+            timing_stats['planning'] = timing_stats.get('planning', 0) + elapsed_time
+            print(f"  -> 规划耗时: {elapsed_time}s | 累计规划时间: {timing_stats['planning']}s")
+
+            return {
+                "plan": ["FINISH"],
+                "loop_count": new_loop_count,
+                "intermediate_steps": [],
+                "timing_stats": timing_stats
             }
 # ==========================================
 # 本地独立测试入口

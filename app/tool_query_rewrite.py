@@ -1,4 +1,5 @@
 from typing import Dict, Any
+import time
 
 from langchain_core.tools import tool
 
@@ -13,6 +14,9 @@ def query_rewrite_tool(state: AgentState) -> Dict[str, Any]:
     将用户模糊或口语化的提问转化为包含专业法律术语、具体案由或关键实体的精准检索词。
     调用指南：如果计划中包含此工具，直接调用 `query_rewrite_tool()` 即可，不要传任何自定义参数。它会自动读取原始问题。
     """
+    # ⏱️ 开始计时
+    start_time = time.time()
+
     query = state['original_request']
     print(f"\n[Tool 1] 正在改写查询: '{query}'")
 
@@ -48,7 +52,18 @@ def query_rewrite_tool(state: AgentState) -> Dict[str, Any]:
     optimized_query = llm.invoke(prompt).content.strip()
     print(f"  -> 优化后查询: '{optimized_query}'")
 
-    return {"rewrite_request": optimized_query}
+    # ⏱️ 计时结束，累计到 timing_stats
+    end_time = time.time()
+    elapsed_time = round(end_time - start_time, 4)
+
+    timing_stats = state.get('timing_stats', {}).copy()
+    timing_stats['rewrite'] = timing_stats.get('rewrite', 0) + elapsed_time
+    print(f"  -> 改写耗时: {elapsed_time}s | 累计改写时间: {timing_stats['rewrite']}s")
+
+    return {
+        "rewrite_request": optimized_query,
+        "timing_stats": timing_stats
+    }
 
 # (可选) 独立运行测试逻辑
 if __name__ == "__main__":

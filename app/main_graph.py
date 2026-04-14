@@ -109,7 +109,8 @@ def run_law_agent(user_query: str):
         "intermediate_steps": [],
         "verification_history": [],
         "final_response": "",
-        "loop_count": 0  # 初始轮次设为 0
+        "loop_count": 0,  # 初始轮次设为 0
+        "timing_stats": {}  # 初始化时间统计字典
     }
 
     final_state = {}

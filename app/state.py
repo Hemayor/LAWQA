@@ -18,3 +18,4 @@ class AgentState(TypedDict):
     verification_history: List[Dict[str, Any]]# Reflector节点记录的自我检查/验证历史得分
     final_response: str                       # Generator节点最终合成的回答
     loop_count: int                           # 记录系统打回重做的次数
+    timing_stats: Dict[str, float]            # 各工具的累计执行时间（秒）：{"rewrite": 0.5, "retrieval": 1.2, "generation": 0.8}

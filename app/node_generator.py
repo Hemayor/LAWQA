@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Dict, Any
 import config
 # 引入状态定义和模型工厂
@@ -11,6 +12,9 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
     生成器节点：整合所有工具的执行结果，运用法律逻辑进行深度推演，生成最终的法律意见。
     """
     print("\n🖋️ [-- 生成器节点 (Generator) 启动 --]")
+
+    # ⏱️ 开始计时
+    start_time = time.time()
 
     # 1. 提取原始请求
     request = state.get('original_request', '无')
@@ -52,17 +56,28 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
 
 你的最终法律意见："""
 
-    # 5. 调用大模型 (保留少许温度值，赋予它将线索串联的“创造力和直觉”)
+    # 5. 调用大模型 (保留少许温度值，赋予它将线索串联的”创造力和直觉”)
     # 这里非常适合使用 DeepSeek-Reasoner（深度思考模型），如果为了速度，使用普通 V3 也可以
     llm = LLMFactory.get_deepseek()
     llm.temperature = config.GENERATOR_TEMP  # 0.3 能够在保持严谨事实的同时，激发它的联想推演能力
 
-    print("  -> 正在进行跨线索融合与法律逻辑推演...")
+    print(" -> 正在进行跨线索融合与法律逻辑推演...")
     final_answer = llm.invoke(prompt).content
-    print("  -> ✅ 最终法律意见书生成完毕！")
+    print(" -> ✅ 最终法律意见书生成完毕！")
+
+    # ⏱️ 计时结束，累计到 timing_stats
+    end_time = time.time()
+    elapsed_time = round(end_time - start_time, 4)
+
+    timing_stats = state.get('timing_stats', {}).copy()
+    timing_stats['generation'] = timing_stats.get('generation', 0) + elapsed_time
+    print(f"  -> 生成耗时: {elapsed_time}s | 累计生成时间: {timing_stats['generation']}s")
 
     # 返回最终状态
-    return {"final_response": final_answer}
+    return {
+        "final_response": final_answer,
+        "timing_stats": timing_stats
+    }
 
 
 # ==========================================
