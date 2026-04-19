@@ -194,7 +194,7 @@ if __name__ == "__main__":
     print("🚀 开始批量测试 Task Planner 节点 (双模型高可用版)...")
 
     # 🔧 你可以在这里修改测试文件的路径，默认用我们之前生成的多跳问答测试集
-    test_file = "../data/test_set/mini_testset3.jsonl"
+    test_file = "../data/test_set/无用/mini_testset3.jsonl"
     # 🔧 结果输出文件
     output_file = "../output/暂时没用/planner_test_result.txt"
 
