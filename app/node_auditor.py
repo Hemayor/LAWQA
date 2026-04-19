@@ -27,7 +27,10 @@ def auditor_node(state: AgentState) -> Dict[str, Any]:
     """
     审计节点：【全局质检】审查所有工具执行完毕后的综合数据质量。
     """
+    import time
     print("\n🔍 [-- 审计节点 (Auditor) 启动 - 全局质检模式 --]")
+
+    start_time = time.time()
 
     request = state['original_request']
     intermediate_steps = state.get('intermediate_steps', [])
@@ -59,14 +62,13 @@ def auditor_node(state: AgentState) -> Dict[str, Any]:
     global_context = "\n\n".join(formatted_outputs)
 
     # 修改 Prompt，让大模型基于“总卷宗”打分
-    prompt = f"""你是一个苛刻的资深法务审核员。系统刚刚执行了一系列调查工具，请审查这些工具收集到的【综合数据】是否足以回答用户的法律问题。
+    prompt = f"""你是一个资深法务审核员。系统刚刚执行了一系列调查工具，请审查这些工具收集到的【综合数据】是否足以回答用户的法律问题。
 
 **用户原始诉求:** {request}
 **所有工具收集到的综合数据卷宗:** {global_context}
 
 **质检标准:**
-1. **全局相关性 (Relevance):** 综合来看，这些内容是否凑齐了回答用户问题所需的核心事实和法条？
-2. **一致性 (Consistency):** 各个工具带回来的数据是否存在致命的逻辑矛盾？
+1. **全局相关性 (Relevance):** 综合来看，这些内容是否找到了回答用户问题所需的核心事实和法条？
 
 **输出要求:**
 请严格输出 JSON 格式，必须包含 confidence_score (1-5的整数), is_consistent (布尔值), is_relevant (布尔值) 以及 reasoning (字符串)。
@@ -89,9 +91,20 @@ def auditor_node(state: AgentState) -> Dict[str, Any]:
 
     print(f"  -> 质检完成！信心评分: {audit_result.confidence_score}/5")
 
-    # 将新的审计结果附加到验证历史中 (使用 model_dump() 兼容 Pydantic V2)
+    # 计算反思时间
+    end_time = time.time()
+    reflection_time = round(end_time - start_time, 4)
+    timing_stats = state.get('timing_stats', {}).copy()
+    timing_stats['reflection'] = timing_stats.get('reflection', 0) + reflection_time
+    print(f"  -> 审计耗时: {reflection_time}s | 累计反思时间: {timing_stats['reflection']}s")
+
+    # 将新的审计结果附加到验证历史中
     current_history = state.get('verification_history', [])
-    return {"verification_history": current_history + [audit_result.model_dump()]}
+
+    return {
+        "verification_history": current_history + [audit_result.model_dump()],
+        "timing_stats": timing_stats
+    }
 
 
 # ==========================================

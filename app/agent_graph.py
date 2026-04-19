@@ -7,6 +7,8 @@ from tool_scout_search import scout_web_search_tool
 
 # 2. 注册工具箱并创建映射字典
 tools = [scout_web_search_tool,query_rewrite_tool, retrieve_and_rerank_tool]
+# tools = [scout_web_search_tool,retrieve_and_rerank_tool]
+
 tool_map = {tool.name: tool for tool in tools}
 
 # 测试入口

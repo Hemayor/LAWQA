@@ -1,0 +1,30 @@
+from app.tool_retrieve_rerank import retrieve_and_rerank_tool
+from state import AgentState
+
+# 如果分类器决定走 Baseline，就直接调用它，跳过复杂的 Planner 和 Auditor。
+def baseline_retrieve_node(state: AgentState):
+    """基线系统专属的检索节点"""
+    print("\n  -> 📡 [Baseline 路线] 正在直接执行本地检索...")
+
+    # 构造一次性执行计划
+    plan = ["retrieve_and_rerank_tool()", "FINISH"]
+
+    try:
+        retrieve_result = retrieve_and_rerank_tool.invoke({"state": state})
+        # 更新中间步骤
+        new_steps = state.get("intermediate_steps", [])
+        new_steps.append({
+            "tool_name": "retrieve_and_rerank_tool",
+            "tool_output": retrieve_result
+        })
+
+        # 更新时间
+        new_timing = state.get("timing_stats", {}).copy()
+        if "timing_stats" in retrieve_result:
+            new_timing.update(retrieve_result["timing_stats"])
+
+        return {"plan": plan, "intermediate_steps": new_steps, "timing_stats": new_timing}
+
+    except Exception as e:
+        print(f"  -> ❌ 基线检索失败: {e}")
+        return {"plan": plan}

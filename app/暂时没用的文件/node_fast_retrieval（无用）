@@ -1,0 +1,36 @@
+import time
+from typing import Dict, Any
+from state import AgentState
+from app.tool_retrieve_rerank import retrieve_and_rerank_tool
+
+
+def fast_retrieval_node(state: AgentState) -> Dict[str, Any]:
+    print("\n⚡ [-- 极速检索节点 (Fast Retrieval) 启动 --]")
+
+    try:
+        # 直接调用底层的检索工具
+        retrieve_result = retrieve_and_rerank_tool.invoke({"state": state})
+
+        # 将结果追加到 intermediate_steps，保证合成器能读到，并且评测脚本能算分
+        steps = state.get("intermediate_steps", [])
+        steps.append({
+            "tool_name": "retrieve_and_rerank_tool",
+            "tool_output": retrieve_result
+        })
+
+        timing_stats = state.get("timing_stats", {}).copy()
+        if "timing_stats" in retrieve_result:
+            timing_stats.update(retrieve_result["timing_stats"])
+
+        print("  -> ✅ 本地极速检索完成")
+
+        # 强制更新 plan 字段，让生成器和评测脚本知道这是走的捷径
+        return {
+            "intermediate_steps": steps,
+            "timing_stats": timing_stats,
+            "plan": ["retrieve_and_rerank_tool()", "FINISH"]
+        }
+
+    except Exception as e:
+        print(f"  -> ❌ 极速检索失败: {e}")
+        return {}

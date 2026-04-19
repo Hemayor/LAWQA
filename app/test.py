@@ -4,45 +4,85 @@ import os
 # ==========================================
 # 1. 配置文件路径
 # ==========================================
-# 假设你要处理的是这个文件，你可以根据实际情况修改
-INPUT_FILE = "../data/test_set/legal_test_set_final.jsonl"
-OUTPUT_FILE = "../data/test_set/web_renumbered.jsonl"
+DATASET_FILE = "../data/test_set/legal_test_set_final.jsonl"
 
 
-def main():
-    if not os.path.exists(INPUT_FILE):
-        print(f"❌ 找不到 JSONL 文件: {INPUT_FILE}")
+def check_dataset():
+    print(f"🕵️ 开始全面体检数据集: {DATASET_FILE}\n" + "=" * 50)
+
+    if not os.path.exists(DATASET_FILE):
+        print(f"❌ 找不到文件: {DATASET_FILE}")
         return
 
-    print("🛠️ 正在重新编排行号...")
+    total_physical_lines = 0  # 物理总行数（包括空行）
+    empty_lines = []  # 空行所在的行号
+    json_error_lines = []  # JSON解析错误的行号
 
-    processed_count = 0
+    seen_ids = {}  # 用于记录已出现的 ID 及其对应的行号 { "id": line_number }
+    duplicate_reports = []  # 记录重复 ID 的详细信息
 
-    with open(INPUT_FILE, 'r', encoding='utf-8') as fin, \
-            open(OUTPUT_FILE, 'w', encoding='utf-8') as fout:
+    with open(DATASET_FILE, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, start=1):
+            total_physical_lines += 1
 
-        for line in fin:
+            # 检查空行
             if not line.strip():
+                empty_lines.append(line_num)
                 continue
 
-            data = json.loads(line)
+            # 尝试解析 JSON
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as e:
+                json_error_lines.append((line_num, str(e)))
+                continue
 
-            # 生成新的 ID，自增并自动补齐 3 位数（001, 002, 003...）
-            # 如果你的题目超过 1000 道，可以改成 :04d (0001)
-            processed_count += 1
-            new_id = f"{processed_count:03d}"
+            # 提取并检查 ID
+            q_id = str(data.get('id', 'MISSING_ID')).strip()
 
-            # 替换旧的 ID
-            data['id'] = new_id
+            if q_id in seen_ids:
+                # 发现内鬼！记录：当前 ID、第一次出现的行号、第二次出现的行号
+                duplicate_reports.append({
+                    "id": q_id,
+                    "first_seen": seen_ids[q_id],
+                    "duplicate_at": line_num
+                })
+            else:
+                seen_ids[q_id] = line_num
 
-            # 将更新后的数据写回新文件
-            fout.write(json.dumps(data, ensure_ascii=False) + '\n')
+    # ==========================================
+    # 输出体检报告
+    # ==========================================
+    print("📋 【数据集体检报告】\n")
+    print(f"📄 物理总行数: {total_physical_lines} 行")
+    print(f"✅ 有效且独立的 ID 数量: {len(seen_ids)} 个\n")
 
-    print("-" * 50)
-    print(f"🎉 处理完成！共为 {processed_count} 道题目重新分配了连续的 ID。")
-    print(f"💾 新的测试集已保存至: {OUTPUT_FILE}")
-    print("💡 检查无误后，可以把旧的 web.jsonl 删掉，把这个新文件改名替换上去！")
+    # 1. 汇报空行
+    if empty_lines:
+        print(f"⚠️ 发现 {len(empty_lines)} 个隐藏的空行，分别在第 {empty_lines} 行。")
+    else:
+        print("✔️ 没有发现隐藏空行。")
+
+    # 2. 汇报 JSON 解析错误
+    if json_error_lines:
+        print(f"\n❌ 发现 {len(json_error_lines)} 处 JSON 格式错误:")
+        for ln, err in json_error_lines:
+            print(f"   - 第 {ln} 行: {err}")
+    else:
+        print("✔️ 所有数据行均符合严格的 JSON 格式。")
+
+    # 3. 汇报重复 ID (高亮重点)
+    if duplicate_reports:
+        print(f"\n🚨 警报！发现 {len(duplicate_reports)} 个重复的 ID！")
+        for report in duplicate_reports:
+            print(
+                f"   -> 抓到内鬼 ID: [{report['id']}] | 第一次出现在第 {report['first_seen']} 行，又在第 {report['duplicate_at']} 行重复出现了！")
+        print("\n💡 建议: 请打开 JSONL 文件，直接跳转到对应的行号修改或删除重复数据。")
+    else:
+        print("\n✔️ 完美！没有发现任何重复的 ID。")
+
+    print("\n" + "=" * 50)
 
 
 if __name__ == "__main__":
-    main()
+    check_dataset()

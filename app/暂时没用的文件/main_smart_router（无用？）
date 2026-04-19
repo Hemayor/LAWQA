@@ -1,0 +1,93 @@
+import time
+from typing import Dict, Any
+from pydantic import BaseModel, Field
+
+# 解决同名函数冲突：通过 as 起别名
+from app.main_graph_baseline import run_law_agent as run_baseline_rag
+from app.main_graph import run_law_agent as run_agentic_rag
+from app.llm_factory import LLMFactory
+
+
+# ==========================================
+# 1. 定义分类器的输出数据结构
+# ==========================================
+class RouteDecision(BaseModel):
+    route: str = Field(description="必须是 'baseline' 或 'agentic'")
+    reason: str = Field(description="做出该路由判定的简短理由")
+
+
+# ==========================================
+# 2. 大模型路由分类器逻辑
+# ==========================================
+def query_classifier(user_query: str) -> str:
+    """
+    判断用户问题复杂度，决定走 Baseline 还是 Agentic
+    """
+    print(f"\n{'=' * 60}")
+    print(f"🚦 [智能路由枢纽] 正在分析案情复杂度...")
+    start_time = time.time()
+
+    # 使用速度快、成本低的模型进行路由（推荐 GPT-4o-mini）
+    llm = LLMFactory.get_gpt()
+    structured_llm = llm.with_structured_output(RouteDecision, method="json_mode")
+
+    prompt = f"""你是一个智能法律问答系统的【中央路由裁判】。
+你的唯一任务是：评估用户的法律问题复杂程度，并将其分发给最合适的底层系统。
+
+【路由分发标准】
+1. 走 'baseline' (静态基础RAG)：
+   - 问题极其简单、明确，缺乏具体案情。
+   - 直接询问某部法律、某个法条的具体规定、或通用流程。
+   - 示例：“《民法典》关于抵押权的规定是什么？”、“工伤鉴定流程怎么走？”、“国家赔偿费用由谁管理？”
+
+2. 走 'agentic' (多智能体RAG)：
+   - 问题复杂，是一段具体的、带有故事情节的现实纠纷（Scenario）。
+   - 包含多跳逻辑，需要搜集多个法条综合判断（Multi-hop）。
+   - 提到了特定的公司、公众人物或近期的热点新闻事件。
+   - 示例：“老板突然把我辞退了，没给钱也没签合同，我该怎么索赔？”、“那个315曝光的梅菜扣肉吃坏了肚子，怎么维权？”
+
+【输出格式】
+请严格输出 JSON 格式，包含 route (值为 baseline 或 agentic) 和 reason (简短理由)。
+
+用户问题：{user_query}"""
+
+    try:
+        decision = structured_llm.invoke(prompt)
+        elapsed = round(time.time() - start_time, 2)
+        print(f"  -> 🔀 [判定结果]: 走 【{decision.route.upper()}】 系统 (分类耗时: {elapsed}s)")
+        print(f"  -> 📝 [判定理由]: {decision.reason}")
+        return decision.route
+    except Exception as e:
+        # 兜底机制：分类器异常时，默认走能力更强的 Agentic RAG
+        print(f"  -> ⚠️ 路由分类失败，触发兜底机制默认切换至 Agentic RAG: {e}")
+        return "agentic"
+
+
+# ==========================================
+# 3. 统一对外的智能调度接口
+# ==========================================
+def run_smart_law_agent(user_query: str) -> Dict[str, Any]:
+    """
+    统一入口：先分类，后执行。
+    对外部调用者来说，无论底层走哪条路，返回的 final_state 格式是完全一致的。
+    """
+    # 1. 意图识别与路由
+    route = query_classifier(user_query)
+
+    # 2. 核心分发逻辑
+    if route == "baseline":
+        final_state = run_baseline_rag(user_query)
+        # 在状态中打个标记，方便后续统计是哪套系统作答的
+        final_state["executed_system"] = "baseline"
+    else:
+        final_state = run_agentic_rag(user_query)
+        final_state["executed_system"] = "agentic"
+
+    return final_state
+
+
+if __name__ == "__main__":
+    # 本地双轨测试
+    run_smart_law_agent("根据《中华人民共和国母婴保健法》，各级人民政府应当采取哪些措施？")
+    time.sleep(1)
+    run_smart_law_agent("我是芯启源的员工，网上曝光公司裁员手段恶劣，我们被逼签字离职该怎么要回欠薪？")

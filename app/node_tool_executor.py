@@ -31,7 +31,8 @@ def task_executor_node(state: AgentState) -> Dict[str, Any]:
         print(f"  -> ❌ 错误：找不到名为 '{tool_name}' 的工具。跳过该步骤。")
         return {
             "plan": current_plan[1:],  # 依然要把它从计划中踢出，防止死循环
-            "intermediate_steps": state.get('intermediate_steps', [])
+            "intermediate_steps": state.get('intermediate_steps', []),
+            "loop_count": state.get('loop_count', 0)  # 保持loop_count不变
         }
 
     print(f"  -> 准备唤醒工具: {tool_name}")
@@ -86,7 +87,8 @@ def task_executor_node(state: AgentState) -> Dict[str, Any]:
         # 出错也不能卡死，跳过这一步继续
         return {
             "plan": current_plan[1:],
-            "intermediate_steps": state.get('intermediate_steps', [])
+            "intermediate_steps": state.get('intermediate_steps', []),
+            "loop_count": state.get('loop_count', 0)  # 保持loop_count不变
         }
 
 

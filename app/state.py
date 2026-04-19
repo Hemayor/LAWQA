@@ -19,3 +19,4 @@ class AgentState(TypedDict):
     final_response: str                       # Generator节点最终合成的回答
     loop_count: int                           # 记录系统打回重做的次数
     timing_stats: Dict[str, float]            # 各工具的累计执行时间（秒）：{"rewrite": 0.5, "retrieval": 1.2, "generation": 0.8}
+    is_complex: bool

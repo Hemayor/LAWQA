@@ -71,7 +71,7 @@ if __name__ == "__main__":
     print("🚀 开始批量测试 Ambiguity Judgment 节点...")
     print(f"📂 测试文件: ../data/test_set/mini_testset3.jsonl")
 
-    test_file = "../data/test_set/mini_testset3.jsonl"
+    test_file = "../../data/test_set/mini_testset3.jsonl"
 
     # 统计变量，支持混合测试集
     total = 0

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//E:/aaadevelop/**)",
+      "Bash(python -m py_compile app/node_task_planner.py app/node_auditor.py app/node_generator.py app/tool_query_rewrite.py app/node_tool_executor.py app/run_eval.py)",
+      "Bash(python -c \"import node_task_planner\")",
+      "Bash(python -c \"import node_task_planner; print\\('node_task_planner OK'\\)\")",
+      "Bash(python -m py_compile node_auditor.py node_generator.py tool_query_rewrite.py node_tool_executor.py)",
+      "Bash(python -m py_compile node_auditor.py node_generator.py node_tool_executor.py run_eval.py)",
+      "Bash(python -m py_compile node_task_planner.py tool_query_rewrite.py node_auditor.py node_generator.py node_tool_executor.py)",
+      "Bash(python -m py_compile node_task_planner.py tool_query_rewrite.py node_auditor.py node_generator.py node_tool_executor.py run_eval.py)",
+      "Bash(python -m py_compile node_auditor.py node_task_planner.py node_generator.py)",
+      "Bash(python -m py_compile node_generator.py)"
+    ]
+  }
+}

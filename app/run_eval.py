@@ -4,30 +4,41 @@ import time
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from langchain_community.callbacks.manager import get_openai_callback
+import config
 
-# 从你的主运行文件中导入调用函数
+# TODO从你的主运行文件中导入调用函数
+# from app.main_graph_baseline import run_law_agent
 from app.main_graph import run_law_agent
 
 # ==========================================
 # 1. 配置文件与多线程参数
 # ==========================================
+RECALL_LIMIT = config.RECALL_LIMIT
+RERANK_LIMIT = config.RERANK_LIMIT
 INPUT_FILE = "../data/test_set/legal_test_set_final.jsonl"
-OUTPUT_FILE = "../output/evaluation_results.csv"
+OUTPUT_FILE = f"../output/baseline_evaluation_results.csv"
+# INPUT_FILE = "../data/test_set/test.jsonl"
+# OUTPUT_FILE = "../output/test.csv"
+# OUTPUT_FILE = f"../output/recall{RECALL_LIMIT}_rerank{RERANK_LIMIT}_baseline_evaluation_results.csv"
 
 # 🌟 【新增】：最大并发线程数
 # 建议：如果是纯 API 调用，可以开到 5-10；
 # 但因为你的本地检索用了 CUDA 模型，建议先设置为 2-3，防止显存溢出 (OOM) 或 API 触发限流
-MAX_WORKERS = 5
+MAX_WORKERS = 3
+
+
 
 # ==========================================
 # 2. 定义 CSV 的表头
 # ==========================================
 CSV_HEADERS = [
     "id",
+    "pipeline_type",
     "original_request",
     "clarification_question",
     "rewrite_request",
-    "plan",
+    "original_plan",
+    "executed_plan",
     "intermediate_steps",
     "verification_history",
     "final_response",
@@ -37,6 +48,7 @@ CSV_HEADERS = [
     "retrieval_time_seconds",
     "generation_time_seconds",
     "web_search_time_seconds",
+    "reflection_time_seconds",
     "other_tools_time_seconds",
     "end_to_end_time_seconds",
     "prompt_tokens",
@@ -77,10 +89,17 @@ def process_single_item(item, line_num):
 
     # 数据清洗与序列化
     intermediate_steps = final_state.get("intermediate_steps", [])
-    actual_plan = [step.get("tool_name") for step in intermediate_steps if "tool_name" in step]
-    actual_plan.append("FINISH")
 
-    plan_str = json.dumps(actual_plan, ensure_ascii=False)
+    # 【改进】：区分 original_plan (规划器制定) 和 executed_plan (实际执行)
+    # original_plan 来自最后一次规划的结果
+    original_plan = final_state.get("plan", [])
+
+    # executed_plan 从intermediate_steps重建（实际执行了什么工具）
+    executed_plan = [step.get("tool_name") for step in intermediate_steps if "tool_name" in step]
+    executed_plan.append("FINISH")
+
+    plan_str = json.dumps(original_plan, ensure_ascii=False)
+    executed_plan_str = json.dumps(executed_plan, ensure_ascii=False)
     steps_str = json.dumps(intermediate_steps, ensure_ascii=False)
     history_str = json.dumps(final_state.get("verification_history", []), ensure_ascii=False)
 
@@ -90,18 +109,26 @@ def process_single_item(item, line_num):
     retrieval_time = round(timing_stats.get('retrieval', 0), 4)
     generation_time = round(timing_stats.get('generation', 0), 4)
     web_search_time = round(timing_stats.get('web_search', 0), 4)
+    reflection_time = round(timing_stats.get('reflection', 0), 4)
 
-    other_tools_time = round(
-        e2e_time - planning_time - rewrite_time - retrieval_time - generation_time - web_search_time, 4)
-    if other_tools_time < 0:
-        other_tools_time = 0
+    # 【改进】：只计算未被显式记录的其他工具时间
+    # 不再简单地用 e2e_time - 各工具时间，因为工具时间已经在各节点中记录了
+    # 而是计算那些没有显式记录的时间（如调度开销、LLM调用等）
+    explicit_tool_time = planning_time + rewrite_time + retrieval_time + generation_time + web_search_time + reflection_time
+    other_tools_time = round(max(0, e2e_time - explicit_tool_time), 4)
+
+    #在组装 row_data 之前获取路由标记
+    is_complex = final_state.get("is_complex", True)  # 默认算复杂
+    pipeline_type = "Agentic RAG" if is_complex else "Baseline RAG"
 
     row_data = {
         "id": q_id,
+        "pipeline_type": pipeline_type,
         "original_request": final_state.get("original_request", question),
         "clarification_question": final_state.get("clarification_question") or "",
         "rewrite_request": final_state.get("rewrite_request") or "",
-        "plan": plan_str,
+        "original_plan": plan_str,
+        "executed_plan": executed_plan_str,
         "intermediate_steps": steps_str,
         "verification_history": history_str,
         "final_response": final_state.get("final_response", ""),
@@ -111,6 +138,7 @@ def process_single_item(item, line_num):
         "retrieval_time_seconds": retrieval_time,
         "generation_time_seconds": generation_time,
         "web_search_time_seconds": web_search_time,
+        "reflection_time_seconds": reflection_time,
         "other_tools_time_seconds": other_tools_time,
         "end_to_end_time_seconds": e2e_time,
         "prompt_tokens": p_tokens,

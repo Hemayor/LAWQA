@@ -25,8 +25,20 @@ class AgentPlan(BaseModel):
 # ==========================================
 # 2. 生成纯动态的系统提示词 (修改为每次动态传入 request)
 # ==========================================
-def create_planner_prompt(request: str) -> str:
+def create_planner_prompt(request: str, history: List[Dict] = None) -> str:
     tool_descriptions = "\n".join([f"- {tool.name}: {tool.description.strip()}" for tool in tools])
+
+    # 【新增】：提取审计历史，形成反思上下文
+    reflection_context = ""
+    if history and len(history) > 0:
+        latest_audit = history[-1]
+        reflection_context = f"""
+        【警告：上一次检索计划已被审计节点驳回！】
+        上一轮的审计打分为: {latest_audit.get('confidence_score', 0)} / 5
+        驳回理由与改进建议: {latest_audit.get('reasoning', '无具体理由')}
+
+        你必须反思上述驳回理由，并改变策略。例如：缺乏背景事实则加scout_web_search_tool，法条不相关则先调query_rewrite_tool。
+        """
 
     # 注意这里：JSON 示例部分使用双括号 {{ 和 }}，因为最外层是 f-string
     # 底部直接插入 {request}，不再需要后续的 .format()
@@ -35,6 +47,8 @@ def create_planner_prompt(request: str) -> str:
 
 **当前可用工具说明书：**
 {tool_descriptions}
+
+{reflection_context}
 
 **极其重要的纪律：**
 1. 你只能规划工具的名字，绝对不能传递任何参数！底层框架会自动处理参数的传递。
@@ -66,14 +80,17 @@ def task_planner_node(state: AgentState) -> Dict[str, Any]:
     # ⏱️ 开始计时
     start_time = time.time()
 
-    # 【新增】：每次进入规划器，说明开启了新的一轮，轮次 +1
     current_loop = state.get("loop_count", 0)
     new_loop_count = current_loop + 1
 
     request = state['original_request']
+    history = state.get('verification_history', [])
 
-    # 【核心修复】：直接调用函数并传入 request 生成最终的 prompt
-    prompt = create_planner_prompt(request)
+    # 【核心修复】：将历史反馈传入，生成动态 prompt
+    prompt = create_planner_prompt(request, history)
+
+    if history:
+        print(f"  -> 发现审计驳回历史，已启用【反思纠错模式】进行重规划...")
 
     # 1. 实例化两个模型，都确保严谨性 (temperature=0.0)
     llm_deepseek = LLMFactory.get_deepseek()
@@ -179,7 +196,7 @@ if __name__ == "__main__":
     # 🔧 你可以在这里修改测试文件的路径，默认用我们之前生成的多跳问答测试集
     test_file = "../data/test_set/mini_testset3.jsonl"
     # 🔧 结果输出文件
-    output_file = "../output/planner_test_result.txt"
+    output_file = "../output/暂时没用/planner_test_result.txt"
 
     # 提前提取合法的工具名，用来校验模型输出
     valid_tool_names = {tool.name + "()" for tool in tools}

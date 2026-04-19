@@ -16,6 +16,8 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
     # ⏱️ 开始计时
     start_time = time.time()
 
+    timing_stats = state.get('timing_stats', {}).copy()
+
     # 1. 提取原始请求
     request = state.get('original_request', '无')
     intermediate_steps = state.get('intermediate_steps', [])
@@ -40,22 +42,42 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
 
         context_str = "\n\n".join(formatted_steps)
 
-    # 4. 专为高级法律分析定制的 Prompt (杜绝纯总结，要求深度穿透)
+    # TODO 4. 专为高级法律分析定制的 Prompt (杜绝纯总结，要求深度穿透)
     prompt = f"""你是一位律师。
-你的任务是根据智能助手们收集到的所有线索（法条、新闻、数据），回答用户的法律问题。
-
-**客户原始诉求：**
+你的任务是根据智能助手们收集到的所有线索（法条、新闻），回答用户的法律问题。
+客户原始诉求：
 {request}
 
-**案卷调查线索（来自各工具的汇编）：**
+调查线索（来自各工具的汇编）：
 {context_str}
 
-**撰写指令（必须严格遵循）：**
-1. **精准回应：** 首先，用通俗易懂的语言直接回答客户的核心诉求，不要说废话。
-2. **证据援引：** 结合提供的线索，引用具体的法条或事实来支撑你的结论。
+撰写指令（必须严格遵循）：
+结合提供的线索，引用具体的法条或事实来支撑你的结论，用通俗易懂的语言直接回答客户的核心诉求，不要说废话。
 
 你的最终法律意见："""
-
+#     prompt = f"""你是一位专业、高效的法律咨询助理。你的任务是基于系统为你检索到的法律线索，直接回应客户的诉求。
+#
+#     【客户原始诉求】
+#     {request}
+#
+#     【检索到的法律线索】
+#     {context_str}
+#
+#     【执行指令（请严格遵循）】
+#     请你先在内心评估客户的诉求是否清晰，以及提供的线索是否足以支撑回答，并选择以下两种情况之一进行回复：
+#
+#     情况一：【诉求模糊 或 线索无关】
+#     如果客户的问题过于宽泛笼统（如“怎么打官司？”、“被坑了怎么办？”），或者《检索到的法律线索》完全无法解答该问题，请绝对不要强行编造法律意见。
+#     👉 你的动作：以律师助理的口吻，礼貌、专业地提出 1-2 个反问，引导客户补充关键信息（如：纠纷的具体类型、涉及金额、有无书面证据等）。字数控制在 100 字以内。
+#
+#     情况二：【诉求清晰 且 线索有效】
+#     如果客户诉求明确，且线索中包含相关法条，请直接生成专业的法律意见。
+#     👉 你的动作规范：
+#     1. 直奔主题：第一句话直接给出核心结论（合法/违法/支持/不支持等）。
+#     2. 依据支撑：结合《检索到的法律线索》，准确引用法条名称和条款，进行简要的法律适用分析。
+#     3. 篇幅严控：为了保证咨询效率，绝对不要说废话和长篇大论，总字数请严格控制在 300 字以内！请多用精炼的短句或列表要点（1. 2. 3.）。
+#
+#     你的最终回复："""
     # 5. 调用大模型 (保留少许温度值，赋予它将线索串联的”创造力和直觉”)
     # 这里非常适合使用 DeepSeek-Reasoner（深度思考模型），如果为了速度，使用普通 V3 也可以
     llm = LLMFactory.get_deepseek()
@@ -69,7 +91,6 @@ def generator_node(state: AgentState) -> Dict[str, Any]:
     end_time = time.time()
     elapsed_time = round(end_time - start_time, 4)
 
-    timing_stats = state.get('timing_stats', {}).copy()
     timing_stats['generation'] = timing_stats.get('generation', 0) + elapsed_time
     print(f"  -> 生成耗时: {elapsed_time}s | 累计生成时间: {timing_stats['generation']}s")
 

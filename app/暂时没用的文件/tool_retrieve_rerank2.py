@@ -13,9 +13,9 @@ import config
 # ==========================================
 # 1. 相对路径配置区
 # ==========================================
-CHROMA_DB_PATH = "../data/chroma_local_db"
-EMBEDDING_MODEL_PATH = "../models/bge-m3/Xorbits/bge-m3"
-RERANKER_MODEL_PATH = "../models/bge-reranker-v2-m3"
+CHROMA_DB_PATH = "../../data/chroma_local_db"
+EMBEDDING_MODEL_PATH = "../../models/bge-m3/Xorbits/bge-m3"
+RERANKER_MODEL_PATH = "../../models/bge-reranker-v2-m3"
 
 COLLECTION_NAME = "pkulaw_knowledge_base"
 
@@ -182,8 +182,8 @@ if __name__ == "__main__":
     print("🚀 开始批量测试+评测 retrieve_and_rerank_tool 工具...")
 
     # 🔧 配置
-    test_file = "../data/test_set/mini_testset.jsonl"
-    output_file = "../output/retrieve_test_result.csv"
+    test_file = "../../data/test_set/mini_testset.jsonl"
+    output_file = "../../output/暂时没用/retrieve_test_result.csv"
     eval_top_k = 5  # 评测指标计算到 top5
 
     print(f"📂 测试文件: {test_file}")
